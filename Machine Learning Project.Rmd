@@ -1,0 +1,341 @@
+---
+title: "Machine Learning Project"
+format: pdf
+editor: visual
+author: Melih Gündüz/Fehmican Korkuter
+date: 2024 June 10
+---
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+install.packages("ranger")
+install.packages("randomForest")
+install.packages("ROSE")
+install.packages("AER")
+install.packages("yardstick")
+install.packages("caret")
+install.packages("tidymodels")
+install.packages("DALEX")
+install.packages("rpart.plot")
+install.packages("mlbench")
+library(ranger)
+library(randomForest)
+library(ROSE)
+library(AER)
+library(yardstick)
+library(caret)
+library(tidymodels)
+library(DALEX)
+library(rpart.plot)
+library(mlbench)
+```
+
+# 1. Problem, Features, and Target
+
+The dataset is related to Hotel Reservations . It includes features such as number of adults, number of children, number of weekend,nights, booking status... The target variable is booking status.booking status will show us whether the reservation has been canceled or not. The aim of the analysis is to create models according to the given features and predicting whether reservations are canceled or not and evaluating the performance of the models
+
+# 2. Dataset
+
+```{r, message=FALSE, warning=FALSE}
+library(readr)
+hotel_new <- read_csv("Hotel Reservations.csv")
+```
+
+```{r, message=FALSE, warning=FALSE}
+hotel_new <- hotel_new[,-1]
+hotelnew <- na.omit(hotel_new)
+hotelnew$booking_status <- ifelse(hotelnew$booking_status == "Canceled", 1, 0)
+str(hotelnew)
+```
+
+The dataset has a total of 36275 observations and 18 variables. Among these, 15 are numerical variables and 3 are categorical variables.
+
+# 3. Check the imbalance problem
+
+```{r, message=FALSE, warning=FALSE}
+table(hotelnew$booking_status)/dim(hotelnew) [1]
+```
+
+The class distribution in the training dataset is imbalanced. with approximately 67.23% of examples belonging to the negative class and 32.76% belonging to the positive class.Thus, It may cause the model to learn less from the minority class, thus not reaching a satisfactory result.
+
+# 3.1
+
+```{r, message=FALSE, warning=FALSE}
+set.seed(123)
+data_balanced_s <- ovun.sample(booking_status~., data = hotelnew, 
+                               method = "over", p=0.5)
+data_balanced <- data_balanced_s$data
+```
+
+Oversampling is a technique used to balance unbalanced data sets in classification problems.
+
+```{r, message=FALSE, warning=FALSE}
+table(data_balanced$booking_status)/dim(data_balanced) [1]
+```
+
+# 4. Splitting The Dataset
+
+```{r, message=FALSE, warning=FALSE}
+set.seed(123)
+hotel_split <- initial_split(data = data_balanced, prop = 0.80)
+hotel_train <- hotel_split |> training()
+hotel_test <- hotel_split |> testing()
+```
+
+It involves understanding the relationships between the model's parameters within the dataset. The goal is to predict the target variable, and the dataset is divided into two subsets: 80% for 'train' and 20% for 'test'.
+
+# 5.Train a Logistic Regression and A Decision Tree Model
+
+# 5.1 Train a Logistic Regression Model
+
+This code creates a logistic regression model using the ‘glm’ function. The target variable is used as predictors, and all other variables from the ‘train’ dataset are used as predictors. We use the binomial distribution as the model’s distribution.
+
+```{r, message=FALSE, warning=FALSE}
+lr_model <- glm(hotel_train$booking_status~., data=hotel_train,
+                family = "binomial")
+summary(lr_model)
+```
+
+The model’s fit yielded a null deviance 53793 with 38803 degrees of freedom, and a residual deviance of 35388 with 38776 degrees of freedom. The AIC value is 35444. AIC allows us to compare the quality of different models.
+
+# 5.1.1 Logistic Model Performance
+
+# 5.1.1.1
+
+This predicts the probability of whether the reservation is canceled or not using a logistic regression model (lr_model) with features from the test dataset.
+
+```{r, message=FALSE, warning=FALSE}
+hotel_probs <- predict(lr_model, hotel_test[,-18],
+                        type = "response")
+head(hotel_probs)
+```
+
+This involves estimating the probability of hotel reservation cancellation or non-cancellation for specific observations in the test dataset.
+
+# 5.1.1.2
+
+This code is used to divide values between 0 and 1 into two categories. Specifically, if a value falls between 0 and 0.5, it is categorized as the probability of reservation not canceled ; if it falls between 0.5 and 1, it is categorized as the probability of reservation canceled.
+
+```{r, message=FALSE, warning=FALSE}
+hotel_classes <- ifelse(hotel_probs>0.5, 1 ,0)
+head(hotel_classes)
+```
+
+This code classifies probabilities greater than 0.5 as 1 (canceled) and probabilities of 0.5 or less as 0 (not canceled).
+
+# 5.1.2 Confusion Matrix
+
+This code is used to evaluate the model’s classification performance.
+
+```{r, message=FALSE, warning=FALSE}
+confusionMatrix(table(ifelse(hotel_test$booking_status == "1", "1", "0"),
+                      hotel_classes), positive= "1")
+```
+
+The results of model evaluation on the test dataset are as follows: Accuracy (0.7754), Kappa (0.5074), McNemar’s Test P-Value (0.7642), Sensitivity (0.7736), Specificity (0.7771), Positive Predictive Value (0.7712), Negative Predictive Value (0.7795), Prevalence (0.4926), Detection Rate (0.3811), Detection Prevalence (0.4942), Balanced Accuracy (0.7754). Overall, it performs well in terms of performance.
+
+# 5.1.3 ROC Curve
+
+This code is used to visualize the ROC Curve graph and to visualize the performance of the logistic regression model.
+
+```{r, message=FALSE, warning=FALSE}
+explain_lr <- explain(model = lr_model,
+                      data = hotel_test[, -18],
+                      y = hotel_test$booking_status == "1",
+                      type = "classification",
+                      verbose = FALSE)
+performance_lr <- model_performance(explain_lr)
+plot(performance_lr, geom = "roc")
+```
+
+```{r, message=FALSE, warning=FALSE}
+performance_lr
+```
+
+Recall (0.7711723) is the rate of correctly predicting positives. Precision (0.7735928) is the rate of true positives among predicted positives. F1 (0.7723807) is the harmonic mean of Recall and Precision, summarizing the model’s classification performance in a single metric. Accuracy (0.775384) is the rate of correctly classifying all observations. AUC (0.8601501) represents the area under the ROC curve and is used to measure the model’s prediction performance. The AUC value is approaching (0.8601501), indicating that the model’s performance is improving. The 8 Residuals section shows the residuals of the model’s predictions, and generally, the residuals appear to have low values.
+
+# 6. Training Decison Tree
+
+# 6.1.1
+
+The purpose of this code is to be used for classifying decision trees.
+
+```{r, message=FALSE, warning=FALSE}
+dt_model <- decision_tree() |>
+set_engine("rpart") |>
+set_mode("classification")
+```
+
+# 6.1.2
+
+This code is used to classify using the “hotel_train” dataset.
+
+```{r, message=FALSE, warning=FALSE}
+dt_hotel <- dt_model |>
+fit(as.factor(booking_status)~., data = hotel_train)
+dt_hotel
+```
+
+# 6.1.3
+
+This code has been used to plot the decision tree.
+
+```{r, message=FALSE, warning=FALSE}
+rpart.plot(dt_hotel$fit)
+```
+
+The root node is based on the lead time variable, with reservations not canceled (yes) if less than 152, and reservations canceled (no) if greater than 152. Subsequently, it was found that 74% of reservations were not canceled, and 26% were canceled. The probability of the root node is 0.50. The sub-node is then based on the no_of_special_requests variable, with reservations not canceled (yes) if greater than or equal to 0.5, and reservations canceled (no) if less than or equal to 0.5. Subsequently, it was found that 32% of reservations were not canceled, and 42% were canceled. The probability of the sub-node is 0.38.
+
+The second sub-node is split based on the market segment type variable, with 18% of reservations not canceled (yes) and 24% canceled (no). The probability of the second sub-node is 0.50. The third sub-node is based on the lead_time variable, with reservations not canceled (yes) if less than 8.5, and reservations canceled (no) if greater than 8.5. It was found that 4% of reservations were not canceled, and 20% were canceled.
+
+The leaf nodes are observed as follows: one leaf node has 32% reservations not canceled, with a probability of 0.22. The second leaf node has 18% reservations not canceled, with a probability of 0.25. The third leaf node has 4% reservations not canceled, with a probability of 0.32. The fourth leaf node has 20% reservations canceled, with a probability of 0.20. The fifth leaf node has 26% reservations canceled, with a probability of 0.84. In this code, we are reclassifying the decision tree dataset.
+
+# 6.1.4 In this code, we are reclassifying the decision tree dataset.
+
+```{r, message=FALSE, warning=FALSE}
+hotel_predictions <- dt_hotel |>
+predict(new_data = hotel_test)
+hotel_predictions
+```
+
+The new dataset created from hotel_predictions sorts 1 and 0 cases in the pred.class column.
+
+# 6.1.5 This code is used to predict the probabilities of new data in the “hotel_test” dataset using the decision tree model.
+
+```{r, message=FALSE, warning=FALSE}
+dt_hotel |>
+predict(new_data = hotel_test,
+        type = "prob")
+```
+
+The probability values of being 0 and 1 are provided for each observation.
+
+# 6.2 Decision Model Performance
+
+This code plots a confusion matrix table, showing the values for benign and malignant cases.
+
+```{r, message=FALSE, warning=FALSE}
+hotel_results <- tibble(predicted=as.factor(hotel_predictions$.pred_class),
+                        actual=as.factor(hotel_test$booking_status))
+hotel_results|> conf_mat(truth = actual, estimate = predicted)
+```
+
+This code plots a confusion matrix table, showing the values for canceled reservation and not canceled reservation cases.
+
+# 6.2.1 This code is used to calculate the accuracy value. It is the ratio of the cases that we predicted in the model to all cases.
+
+```{r, message=FALSE, warning=FALSE}
+hotel_results |> accuracy(truth = actual, estimate = predicted)
+```
+
+The accuracy value (0.7802288).
+
+# 6.2.2
+
+This code is used to calculate the sensitivity value.
+
+```{r, message=FALSE, warning=FALSE}
+hotel_results |> sens(truth = actual, estimate = predicted)
+```
+
+The sensitivity value (0.8210719) is good.
+
+# 6.2.3
+
+This code is used to calculate the F-measure value.
+
+```{r, message=FALSE, warning=FALSE}
+hotel_results |> f_meas(truth = actual, estimate = predicted)
+```
+
+The F-measure value is (0.7907753).
+
+# 7.The Overfitting Problem This code collects the necessary information to measure the performance of the decision tree model in the dataset.
+
+```{r, message=FALSE, warning=FALSE}
+hotel_fit <- dt_model |>
+last_fit(as.factor(booking_status) ~., split = hotel_split)
+hotel_fit |> collect_metrics()
+```
+
+The accuracy value (0.7802288) has turned out to be good. The ROC AUC value (0.7934195) has also turned out to be good. The Brier classification value (0.1703580) has been obtained.
+
+# 7.1 This code collects predictions on the dataset from the model and evaluates the performance of the model.
+
+```{r, message=FALSE, warning=FALSE}
+hotel_fit |> collect_predictions()
+```
+
+The model predominantly predicted that reservations were not canceled (0), with these predictions generally having high probabilities. In some observations, it predicted that reservations were canceled (1), with these predictions having probabilities ranging from 76% to 84%.
+
+# 7.2
+
+```{r, message=FALSE, warning=FALSE}
+hotel_dt <- rpart(booking_status ~ ., data = hotel_train,
+                  method = "class")
+rpart.plot(hotel_dt)
+```
+
+The root node is based on the lead time variable, with reservations not canceled (yes) if less than 152, and reservations canceled (no) if greater than 152. Accordingly, 74% of the reservations were not canceled, and 26% were canceled. The probability of the root node is 0.50.The sub-node is based on the no_of_special_requests variable; if greater than or equal to 1, the reservations are classified as not canceled (yes), and if less than or equal to 0.5, the reservations are classified as canceled (no). Accordingly, 32% of the reservations were not canceled, and 42% were canceled. The probability of the sub-node is 0.38.
+
+The second sub-node is based on the market segment type variable; 18% of the reservations were not canceled (yes), and 24% were canceled (no). The probability of the second sub-node is 0.50.The third sub-node is based on the lead time variable; if less than 9, the reservations are classified as not canceled (yes), and if greater than 9, the reservations are classified as canceled (no). Accordingly, 4% of the reservations were not canceled, and 20% were canceled.
+
+The leaf nodes are observed as follows:One leaf node has 32% of reservations not canceled, with a probability of 0.22.The second leaf node has 18% of reservations not canceled, with a probability of 0.25.The third leaf node has 4% of reservations not canceled, with a probability of 0.32.The fourth leaf node has 20% of reservations canceled, with a probability of 0.76.The fifth leaf node has 26% of reservations canceled, with a probability of 0.84.
+
+# 7.3 This code demonstrates the effects of parameters in the decision tree.
+
+```{r, message=FALSE, warning=FALSE}
+less_dt <- rpart(booking_status ~ ., data = hotel_train,
+                 method = "class",
+                 maxdepth =30,
+                 cp = 0.01)
+rpart.plot(less_dt)
+```
+
+The root node is based on the lead time variable, with reservations not canceled (yes) if less than 152, and reservations canceled (no) if greater than 152. Accordingly, 74% of the reservations were not canceled, and 26% were canceled. The probability of the root node is 0.50.The sub-node is based on the no_of_special_requests variable; if greater than or equal to 1, the reservations are classified as not canceled (yes), and if less than or equal to 0.5, the reservations are classified as canceled (no). Accordingly, 32% of the reservations were not canceled, and 42% were canceled. The probability of the sub-node is 0.38.
+
+The second sub-node is based on the market segment type variable; 18% of the reservations were not canceled (yes), and 24% were canceled (no). The probability of the second sub-node is 0.50.The third sub-node is based on the lead time variable; if less than 9, the reservations are classified as not canceled (yes), and if greater than 9, the reservations are classified as canceled (no). Accordingly, 4% of the reservations were not canceled, and 20% were canceled.
+
+The leaf nodes are observed as follows:One leaf node has 32% of reservations not canceled, with a probability of 0.22.The second leaf node has 18% of reservations not canceled, with a probability of 0.25.The third leaf node has 4% of reservations not canceled, with a probability of 0.32.The fourth leaf node has 20% of reservations canceled, with a probability of 0.76.The fifth leaf node has 26% of reservations canceled, with a probability of 0.84.
+
+# 7. Improve The Prediction Performance Of The Decision Tree
+
+# Model Tuning Hyperparameters (Grid Search in Caret)
+
+This code is used to visually select the best hyperparameter value in grid search.
+
+```{r, message=FALSE, warning=FALSE}
+fit_control <- trainControl(method = "cv", number = 10)
+hyp_dt_model <- train(booking_status ~ .,
+                      data = hotel_train,
+                      method = "rpart",
+                      trControl = fit_control,
+                      tuneGrid = expand.grid(cp = seq(0, 0.5, 0.20)),
+                      maxdepth =30,
+                      cp = 0.01)
+plot(hyp_dt_model)
+```
+
+This graph illustrates that as the complexity parameter of a model increases, the error (RMSE) on cross-validation also increases. As complexity increases, the model becomes more flexible, but it also carries a higher risk of overfitting. Thus, the model may try to fit the training data more closely, potentially leading to decreased generalization ability. Higher complexity may result in lower training error but higher error rates on test data. Therefore, a careful balance must be struck to determine the optimal model complexity.
+
+# 8. Training Bagging Model
+
+```{r,warning=FALSE, message=FALSE}
+bagging_model <- ranger(booking_status ~ .,
+                    data = hotel_train,
+                    mtry = 8)
+bagging_model
+```
+
+This "ranger" result demonstrates the performance of a regression model consisting of 500 trees. The model aims to predict the booking status using 17 independent variables. The OOB prediction error is calculated as 0.0453 and the R-squared value is calculated as 0.8185, indicating a good fit of the model to the data and a high accuracy in predicting the booking status.
+
+# 8.1 Model Performance
+
+```{r}
+bagging_class_predict <- predict(bagging_model, hotel_test)$predictions
+factor_rf <- (ifelse(bagging_class_predict > 0.5 ,1 ,0))
+confusionMatrix(table(ifelse(hotel_test$booking_status == "1", "1", "0"),
+                      factor_rf), positive= "1")
+```
+
+The results of model evaluation on the test dataset are as follows: Accuracy (0.9437), Kappa (0.8874), McNemar’s Test P-Value (4.79e-05), Sensitivity (0.9344), Specificity (0.9532), Positive Predictive Value (0.9531), Negative Predictive Value (0.9346), Prevalence (0.5041), Detection Rate (0.4710), Detection Prevalence (0.4942), Balanced Accuracy (0.9438). Overall, it performs well in terms of performance.
